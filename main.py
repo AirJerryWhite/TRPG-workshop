@@ -11,7 +11,7 @@ import pandas as pd
 import numpy as np
 
 
-def username_sl(status: str, UserNameCache: dict = None):
+def username_sl(status: str, usernamecache: dict = None):
     if status == 'load':
         fp = open('data/usernamecache.json', 'r', encoding='utf-8')
         data = json.load(fp)
@@ -147,7 +147,7 @@ def sanDice(san: int, user_id: str, config: str):
 
 
 attributes_dict = {'力量': 'str', '体质': 'con', '体型': 'siz', '敏捷': 'dex', '外貌': 'app', '智力': 'int', '意志': 'pow',
-                   '教育': 'edu', '幸运': 'luck'}
+                   '教育': 'edu', '幸运': 'luck', '灵感': 'int', '知识': 'edu'}
 coc_roles = ['GM', 'KP', 'PL']
 coc_channel_names = ['_主频道_语音', '_主频道_文字', '_地图', '_KP', '_录卡']
 # init Bot
@@ -155,6 +155,64 @@ bot = Bot(token=init_bot('load')['token'])
 
 
 # manage_channel_whitelist dice_whitelist_channel
+
+@bot.command(name='DiceDetect', aliases=['dd'], prefixes=['.'])
+async def DiceDetect(msg: Message):
+    bot_setting = init_bot('load')
+    channel_id = msg.ctx.channel.id
+    user_id = msg.author.id
+    if user_id in bot_setting['GM'] and channel_id not in bot_setting['dice_whitelist_channel']:
+        bot_setting['dice_whitelist_channel'].append(channel_id)
+        init_bot('save', bot_setting)
+        output = '(met)' + user_id + '(met)该频道已经可以丢骰子了，(ง •_•)ง加油祝各位皆为欧皇'
+        await msg.reply(output, use_quote=False)
+
+
+@bot.command(name='ManageDetect', aliases=['md'], prefixes=['.'])
+async def ManageDetect(msg: Message):
+    bot_setting = init_bot('load')
+    channel_id = msg.ctx.channel.id
+    user_id = msg.author.id
+    if user_id in bot_setting['GM'] and channel_id not in bot_setting['manage_channel_whitelist']:
+        bot_setting['manage_channel_whitelist'].append(channel_id)
+        output = '(met)' + user_id + '(met)该频道已经可以创建房间了，(ง •_•)ง加油调查员'
+        await msg.reply(output, use_quote=False)
+        init_bot('save', bot_setting)
+
+
+@bot.command(name='DelDiceDetect', aliases=['ddd'], prefixes=['.'])
+async def DiceDetect(msg: Message):
+    bot_setting = init_bot('load')
+    channel_id = msg.ctx.channel.id
+    user_id = msg.author.id
+    if user_id in bot_setting['GM'] and channel_id in bot_setting['dice_whitelist_channel']:
+        bot_setting['dice_whitelist_channel'].pop(bot_setting['dice_whitelist_channel'].index(channel_id))
+        init_bot('save', bot_setting)
+        output = '(met)' + user_id + '(met)骰娘不再祝福这里。'
+        await msg.reply(output, use_quote=False)
+
+
+@bot.command(name='DelManageDetect', aliases=['dmd'], prefixes=['.'])
+async def ManageDetect(msg: Message):
+    bot_setting = init_bot('load')
+    channel_id = msg.ctx.channel.id
+    user_id = msg.author.id
+    if user_id in bot_setting['GM'] and channel_id in bot_setting['manage_channel_whitelist']:
+        bot_setting['manage_channel_whitelist'].pop(bot_setting['manage_channel_whitelist'].index(channel_id))
+        init_bot('save', bot_setting)
+        output = '(met)' + user_id + '(met)不会再有调查员遭遇不幸。'
+        await msg.reply(output, use_quote=False)
+
+
+@bot.command(name='DelChannel', aliases=['dc'], prefixes=['.'])
+async def DelChannel(msg: Message, b: Bot):
+    bot_setting = init_bot('load')
+    channel_id = msg.ctx.channel.id
+    user_id = msg.author.id
+    guide = await b.fetch_guild(msg.ctx.guild.id)
+    if user_id in bot_setting['GM']:
+        await guide.delete_channel(channel_id)
+
 
 @bot.command(name='addUser', aliases=['au'], prefixes=['.'])
 async def add_User(msg: Message, config: str = None):
@@ -304,33 +362,29 @@ async def createNewRoom(msg: Message, b: Bot, config: str = None):
             for category in category_list:
                 if category.name == coc_games[guild_id]['name']:
                     coc_games[guild_id]['category_id'] = category.id
-            await guide.create_channel(config + '_主频道_语音', category=coc_games[guild_id]['category_id'], type=2)
-            await guide.create_channel(config + '_主频道_文字', category=coc_games[guild_id]['category_id'], type=1)
-            await guide.create_channel(config + '_地图', category=coc_games[guild_id]['category_id'], type=1)
-            await guide.create_channel(config + '_KP', category=coc_games[guild_id]['category_id'], type=1)
-            await guide.create_channel(config + '_录卡', category=coc_games[guild_id]['category_id'], type=1)
-            channel_list = [channel for channel in await guide.fetch_channel_list()]
-            for channel in channel_list:
-                if channel.name == (config + '_KP') and channel.parent_id == coc_games[guild_id]['category_id']:
-                    await channel.update_permission(coc_games[guild_id]['role']['KP'], allow=2048)
-                    await channel.update_permission('0', deny=2048)
-            channel_names = [channel.name for channel in channel_list]
-            channel_ids = [channel.id for channel in channel_list]
-            channel_parent_ids = [channel.parent_id for channel in channel_list]
-            cache = [(config + name) for name in coc_channel_names]
-            for name in channel_names:
-                if name in cache:
-                    index = channel_names.index(name)
-                    if channel_parent_ids[index] == coc_games[guild_id]['category_id']:
-                        coc_games[guild_id][name] = channel_ids[index]
+                    category_id = category.id
+            voice_channel = await guide.create_channel(config + '_主频道_语音', category=category_id, type=2)
+            text_channel = await guide.create_channel(config + '_主频道_文字', category=category_id, type=1)
+            map_channel = await guide.create_channel(config + '_地图', category=category_id, type=1)
+            kp_channel = await guide.create_channel(config + '_KP', category=category_id, type=1)
+            card_channel = await guide.create_channel(config + '_录卡', category=category_id, type=1)
+            await kp_channel.update_permission(role_id=coc_games[guild_id]['role']['KP'], allow=2048)
+            await kp_channel.update_permission(role_id='0', deny=2048)
+            channel_list = [voice_channel, text_channel, map_channel, kp_channel, card_channel]
+            channel_name = [(config + name) for name in coc_channel_names]
+            for name in channel_name:
+                index = channel_name.index(name)
+                coc_games[guild_id][name] = channel_list[index].id
             await guide.grant_role(msg.author, coc_games[guild_id]['role']['KP'])
-            bot_setting['dice_whitelist_channel'].append(coc_games[guild_id][(config + '_主频道_文字')])
-            bot_setting['dice_whitelist_channel'].append(coc_games[guild_id][(config + '_KP')])
-            bot_setting['manage_channel_whitelist'].append(coc_games[guild_id][(config + '_KP')])
-            bot_setting['manage_channel_whitelist'].append(coc_games[guild_id][(config + '_录卡')])
+            bot_setting['dice_whitelist_channel'].append(text_channel.id)
+            bot_setting['dice_whitelist_channel'].append(kp_channel.id)
+            bot_setting['manage_channel_whitelist'].append(kp_channel.id)
+            bot_setting['manage_channel_whitelist'].append(card_channel.id)
             coc_games[guild_id]['player'] = {}
             coc_games_sl('save', coc_games)
             init_bot('save', bot_setting)
+            await card_channel.send(
+                '本骰娘的录卡较为简单，登记玩家名后((ins).au 玩家名(ins))直接把车好的卡发进来就可以了，导入完成后使用(ins).pr 角色名(ins)使用角色。')
             await msg.reply(('(met)' + msg.author.id + '(met)房间创建成功'), use_quote=False)
 
 
@@ -345,8 +399,7 @@ async def JoinRoom(msg: Message, b: Bot, config: str = None):
         guild_id = msg.ctx.guild.id
         channel_id = msg.ctx.channel.id
         user_id = msg.author.id
-        if channel_id in bot_setting['manage_channel_whitelist'] and config == coc_games[guild_id][
-            'name']:
+        if channel_id in bot_setting['manage_channel_whitelist'] and config == coc_games[guild_id]['name']:
             guide = await b.fetch_guild(guild_id)
             coc_games[guild_id]['player'][user_id] = {'name': username[user_id]['name'], 'role': None}
             await guide.grant_role(msg.author, coc_games[guild_id]['role']['PL'])
@@ -367,41 +420,55 @@ async def closeRoom(msg: Message, b: Bot, config: str = None):
     else:
         bot_setting = init_bot('load')
         coc_games = coc_games_sl('load')
-        if msg.ctx.channel.id in bot_setting['manage_channel_whitelist']:
-            try:
-                guide = await b.fetch_guild(msg.ctx.guild.id)
-                guideuser = await guide.fetch_user(msg.author.id)
-                roles_id = [cache for cache in coc_games[msg.ctx.guild.id]['role'].values()]
-                for role in guideuser.roles:
-                    if role in roles_id:
-                        for name in coc_channel_names[:]:
-                            await guide.delete_channel(channel_id=(coc_games[msg.ctx.guild.id][(config + name)]))
-                        await guide.delete_channel(channel_id=(coc_games[msg.ctx.guild.id]['category_id']))
-                        try:
-                            await guide.revoke_role(msg.author, coc_games[msg.ctx.guild.id]['role']['KP'])
-                            if coc_games[msg.ctx.guild.id]['player'] is not None:
-                                for user in coc_games[msg.ctx.guild.id]['player'].keys():
-                                    await guide.revoke_role(user, coc_games[msg.ctx.guild.id]['role']['PL'])
-                        except khl.requester.HTTPRequester.APIRequestFailed:
-                            print('继续执行')
-                        try:
-                            bot_setting['dice_whitelist_channel'].pop(
-                                bot_setting['dice_whitelist_channel'].index(
-                                    coc_games[msg.ctx.guild.id][(config + '_主频道_文字')]))
-                            bot_setting['dice_whitelist_channel'].pop(
-                                bot_setting['dice_whitelist_channel'].index(
-                                    coc_games[msg.ctx.guild.id][(config + '_KP')]))
-                            bot_setting['manage_channel_whitelist'].pop(bot_setting['manage_channel_whitelist'].index(
+        try:
+            guide = await b.fetch_guild(msg.ctx.guild.id)
+            guideuser = await guide.fetch_user(msg.author.id)
+            roles_id = [cache for cache in coc_games[msg.ctx.guild.id]['role'].values()]
+            for role in guideuser.roles:
+                if role in roles_id:
+                    for name in coc_channel_names[:]:
+                        await guide.delete_channel((coc_games[msg.ctx.guild.id][(config + name)]))
+                    await guide.delete_channel((coc_games[msg.ctx.guild.id]['category_id']))
+                    try:
+                        await guide.revoke_role(msg.author, coc_games[msg.ctx.guild.id]['role']['KP'])
+                        if coc_games[msg.ctx.guild.id]['player'] is not None:
+                            for user in coc_games[msg.ctx.guild.id]['player'].keys():
+                                await guide.revoke_role(user, coc_games[msg.ctx.guild.id]['role']['PL'])
+                    except khl.requester.HTTPRequester.APIRequestFailed:
+                        print('继续执行')
+                    try:
+                        bot_setting['dice_whitelist_channel'].pop(
+                            bot_setting['dice_whitelist_channel'].index(
+                                coc_games[msg.ctx.guild.id][(config + '_主频道_文字')]))
+                        bot_setting['dice_whitelist_channel'].pop(
+                            bot_setting['dice_whitelist_channel'].index(
                                 coc_games[msg.ctx.guild.id][(config + '_KP')]))
-                            bot_setting['manage_channel_whitelist'].pop(bot_setting['manage_channel_whitelist'].index(
-                                coc_games[msg.ctx.guild.id][(config + '_录卡')]))
-                        except ValueError:
-                            print('继续执行')
-                        del coc_games[msg.ctx.guild.id]
-                        coc_games_sl('save', coc_games)
-                        init_bot('save', bot_setting)
-            except KeyError:
-                print('继续执行')
+                        bot_setting['manage_channel_whitelist'].pop(bot_setting['manage_channel_whitelist'].index(
+                            coc_games[msg.ctx.guild.id][(config + '_KP')]))
+                        bot_setting['manage_channel_whitelist'].pop(bot_setting['manage_channel_whitelist'].index(
+                            coc_games[msg.ctx.guild.id][(config + '_录卡')]))
+                    except ValueError:
+                        print('继续执行')
+                    del coc_games[msg.ctx.guild.id]
+                    coc_games_sl('save', coc_games)
+                    init_bot('save', bot_setting)
+        except KeyError:
+            print('继续执行')
+
+
+@bot.command(name='delrole', aliases=['dr'], prefixes=['.'])
+async def delrole(msg: Message, config: str, confirm: str):
+    bot_setting = init_bot('load')
+    user = username_sl('load')
+    channel_id = msg.ctx.channel.id
+    user_id = msg.author.id
+    if channel_id in bot_setting['dice_whitelist_channel'] or channel_id in bot_setting['manage_channel_whitelist']:
+        if user_id in user.keys():
+            if config in user[user_id]['pc'].keys() and config == confirm:
+                del user[user_id]['pc'][config]
+                output = '(met)' + user_id + '(met) (ins)' + config + '(ins) 他已经离开了你，这一切是不可挽回的。'
+                username_sl('save', user)
+                await msg.reply(output, use_quote=False)
 
 
 @bot.command(name='playrole', aliases=['role', 'pr', 'ur'], prefixes=['.'])
@@ -415,7 +482,7 @@ async def playrole(msg: Message, config: str = 'list'):
     if channel_id in bot_setting['dice_whitelist_channel']:
         if user_id in user.keys():
             if config == 'list':
-                if user[user_id]['pc'] is not None:
+                if user[user_id]['pc'] != {}:
                     pc = [i for i in user[user_id]['pc'].keys()]
                     pc = '、'.join(pc)
                     output = '(met)' + user_id + '(met)你的可用角色有：' + pc + '。'
